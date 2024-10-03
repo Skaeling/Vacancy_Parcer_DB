@@ -19,23 +19,28 @@ def get_emp_data(employees_ids: list) -> list[dict[str, Any]]:
     return emp_data
 
 
-def get_vacancies(data: list) -> list:
+def get_vacancies(data: list, page=0) -> list:
     """Получение данных о вакансиях из API hh.ru для ограничения объема данных выбираются первые 100"""
     headers = {'User-Agent': 'HH-User-Agent'}
     vac_data = []
     for i in data:
-        params = {'text': '', 'page': 0, 'per_page': 100, 'employer_id': i["id"]}
+        params = {'text': '', 'page': page, 'per_page': 10, 'employer_id': i["id"], 'only_with_salary': 'true'}
         response = requests.get(i["vacancies_url"], headers=headers, params=params)
         if response.status_code == 200:
             vacancies = response.json()['items']
             # vac_data.append({'employer': i["id"], 'vacancy': vacancies})
             vac_data.append(vacancies)
-
         else:
             print("Error:", response.status_code)
-    res = list(chain.from_iterable(vac_data))
-    return res
+    return list(chain.from_iterable(vac_data))
 
+
+def get_vacancies_over100(data):
+    response = []
+    for page in range(20):
+        values = get_vacancies(data, page)
+        response.extend(values)
+    return response
 
 def create_database(database_name: str, params: dict) -> None:
     """Создание базы данных и таблиц для сохранения данных о работодателях и вакансиях"""
@@ -57,7 +62,7 @@ def create_database(database_name: str, params: dict) -> None:
                 company_name VARCHAR(100) NOT NULL,
                 open_vacancies INT NOT NULL,
                 location VARCHAR(50),
-                contacts TEXT
+                employer_url TEXT
                 )
                 """)
 
@@ -67,7 +72,10 @@ def create_database(database_name: str, params: dict) -> None:
                 vacancy_id INT PRIMARY KEY,
                 vacancy_name VARCHAR(100) NOT NULL,
                 employer_id INT NOT NULL,
-                salary INT,
+                salary_min INT DEFAULT 0,
+                salary_max INT DEFAULT 0,
+                currency CHAR(10),
+                vacancy_url TEXT,
                 experience TEXT,
                 type VARCHAR(100),
                 FOREIGN KEY (employer_id) REFERENCES employees(employer_id)
@@ -82,7 +90,7 @@ def save_data_to_database(data: list[dict[str, Any]], database_name: str, params
         with conn.cursor() as cur:
             for emp in data:
                 cur.execute("""
-                        INSERT INTO employees (employer_id, company_name, open_vacancies, location, contacts)
+                        INSERT INTO employees (employer_id, company_name, open_vacancies, location, employer_url)
                         VALUES (%s, %s, %s, %s, %s)
                         RETURNING employer_id
                         """,
@@ -99,17 +107,25 @@ def save_vacancy_to_database(data: list[dict[str, Any]], database_name: str, par
     with psycopg2.connect(dbname=database_name, **params) as conn:
         with conn.cursor() as cur:
             for vac in data:
-                if vac['salary'] is None:
-                    salary = 0
+                if vac['salary']['from'] is None:
+                    salary_min = 0
+                    salary_max = vac['salary']['to']
+                elif vac['salary']['to'] is None:
+                    salary_max = 0
+                    salary_min = vac['salary']['from']
                 else:
-                    salary = vac['salary']['from']
+                    salary_min = vac['salary']['from']
+                    salary_max = vac['salary']['to']
                 cur.execute("""
-                        INSERT INTO vacancies (vacancy_id, vacancy_name, employer_id, salary, experience, type)
-                        VALUES (%s, %s, %s, %s, %s, %s)
+                        INSERT INTO vacancies (vacancy_id, vacancy_name, employer_id, salary_min, salary_max, currency, 
+                        vacancy_url, experience, type)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
-                            (vac['id'], vac['name'], vac['employer']['id'], salary,
-                             vac['experience']['name'], vac['type']['name'])
+                            (vac['id'], vac['name'], vac['employer']['id'], salary_min, salary_max,
+                             vac['salary']['currency'], vac['alternate_url'], vac['experience']['name'],
+                             vac['type']['name'])
                             )
                 # employer_id = cur.fetchone()[0]  # (1, )
 
     conn.close()
+
