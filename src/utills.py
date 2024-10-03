@@ -1,6 +1,7 @@
 from typing import Any
 import requests
 from itertools import chain
+import psycopg2
 
 
 def get_emp_data(employees_ids: list) -> list[dict[str, Any]]:
@@ -19,7 +20,7 @@ def get_emp_data(employees_ids: list) -> list[dict[str, Any]]:
 
 
 def get_vacancies(data: list) -> list:
-    """Получение данных о вакансиях из API hh.ru"""
+    """Получение данных о вакансиях из API hh.ru для ограничения объема данных выбираются первые 100"""
     headers = {'User-Agent': 'HH-User-Agent'}
     vac_data = []
     for i in data:
@@ -27,20 +28,13 @@ def get_vacancies(data: list) -> list:
         response = requests.get(i["vacancies_url"], headers=headers, params=params)
         if response.status_code == 200:
             vacancies = response.json()['items']
-            vac_data.append({'employeer': i["id"], 'vacancy': vacancies})
+            # vac_data.append({'employer': i["id"], 'vacancy': vacancies})
+            vac_data.append(vacancies)
+
         else:
             print("Error:", response.status_code)
-    # res = list(chain.from_iterable(vac_data))
-    return vac_data
-
-    # ['id'], employees['name'], employees['type'], employees['open_vacancies'],
-    # employees['site_url'], employees['area']['name'],
-    # employees['industries'][0]['name']]
-#
-# data.append({
-#             'channel': channel_data['items'][0],
-#             'videos': videos_data
-#         })
+    res = list(chain.from_iterable(vac_data))
+    return res
 
 
 def create_database(database_name: str, params: dict) -> None:
@@ -49,7 +43,73 @@ def create_database(database_name: str, params: dict) -> None:
     conn.autocommit = True
     cur = conn.cursor()
 
+    cur.execute(f'DROP DATABASE IF EXISTS {database_name}')
+    cur.execute(f'CREATE DATABASE {database_name}')
+
+    cur.close()
+    conn.close()
+
+    with psycopg2.connect(dbname=database_name, **params) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """CREATE TABLE employees (
+                employer_id INT PRIMARY KEY,
+                company_name VARCHAR(100) NOT NULL,
+                open_vacancies INT NOT NULL,
+                location VARCHAR(50),
+                contacts TEXT
+                )
+                """)
+
+        with conn.cursor() as cur:
+            cur.execute(
+                """CREATE TABLE vacancies (
+                vacancy_id INT PRIMARY KEY,
+                vacancy_name VARCHAR(100) NOT NULL,
+                employer_id INT NOT NULL,
+                salary INT,
+                experience TEXT,
+                type VARCHAR(100),
+                FOREIGN KEY (employer_id) REFERENCES employees(employer_id)
+                )
+                """)
+    conn.close()
+
 
 def save_data_to_database(data: list[dict[str, Any]], database_name: str, params: dict) -> None:
-    """Сохранение данных о работодателях и вакансиях в базу данных"""
-    pass
+    """Сохранение данных о работодателях в базу данных"""
+    with psycopg2.connect(dbname=database_name, **params) as conn:
+        with conn.cursor() as cur:
+            for emp in data:
+                cur.execute("""
+                        INSERT INTO employees (employer_id, company_name, open_vacancies, location, contacts)
+                        VALUES (%s, %s, %s, %s, %s)
+                        RETURNING employer_id
+                        """,
+                            (emp['id'], emp['name'], emp['open_vacancies'], emp['area']['name'],
+                             emp['site_url'])
+                            )
+                employer_id = cur.fetchone()[0]  # (1, )
+
+    conn.close()
+
+
+def save_vacancy_to_database(data: list[dict[str, Any]], database_name: str, params: dict) -> None:
+    """Сохранение данных о вакансиях в базу данных"""
+    with psycopg2.connect(dbname=database_name, **params) as conn:
+        with conn.cursor() as cur:
+            for vac in data:
+                if vac['salary'] is None:
+                    salary = 0
+                else:
+                    salary = vac['salary']['from']
+                cur.execute("""
+                        INSERT INTO vacancies (vacancy_id, vacancy_name, employer_id, salary, experience, type)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        """,
+                            (vac['id'], vac['name'], vac['employer']['id'], salary,
+                             vac['experience']['name'], vac['type']['name'])
+                            )
+                # employer_id = cur.fetchone()[0]  # (1, )
+
+    conn.close()
