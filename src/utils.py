@@ -1,46 +1,6 @@
 from typing import Any
-import requests
-from itertools import chain
 import psycopg2
 
-
-def get_emp_data(employees_ids: list) -> list[dict[str, Any]]:
-    """Получение данных о работодателях из API hh.ru по employer_id"""
-    emp_data = []
-    headers = {'User-Agent': 'HH-User-Agent'}
-    for employer_id in employees_ids:
-        url = f'https://api.hh.ru/employers/{employer_id}'
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            employees = response.json()
-            emp_data.append(employees)
-        else:
-            print("Error:", response.status_code)
-    return emp_data
-
-
-def get_vacancies(data: list, page=0) -> list:
-    """Получение данных о вакансиях из API hh.ru для ограничения объема данных выбираются первые 100"""
-    headers = {'User-Agent': 'HH-User-Agent'}
-    vac_data = []
-    for i in data:
-        params = {'text': '', 'page': page, 'per_page': 10, 'employer_id': i["id"], 'only_with_salary': 'true'}
-        response = requests.get(i["vacancies_url"], headers=headers, params=params)
-        if response.status_code == 200:
-            vacancies = response.json()['items']
-            # vac_data.append({'employer': i["id"], 'vacancy': vacancies})
-            vac_data.append(vacancies)
-        else:
-            print("Error:", response.status_code)
-    return list(chain.from_iterable(vac_data))
-
-
-def get_vacancies_over100(data):
-    response = []
-    for page in range(20):
-        values = get_vacancies(data, page)
-        response.extend(values)
-    return response
 
 def create_database(database_name: str, params: dict) -> None:
     """Создание базы данных и таблиц для сохранения данных о работодателях и вакансиях"""
@@ -57,7 +17,7 @@ def create_database(database_name: str, params: dict) -> None:
     with psycopg2.connect(dbname=database_name, **params) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """CREATE TABLE employees (
+                """CREATE TABLE employers (
                 employer_id INT PRIMARY KEY,
                 company_name VARCHAR(100) NOT NULL,
                 open_vacancies INT NOT NULL,
@@ -72,38 +32,37 @@ def create_database(database_name: str, params: dict) -> None:
                 vacancy_id INT PRIMARY KEY,
                 vacancy_name VARCHAR(100) NOT NULL,
                 employer_id INT NOT NULL,
-                salary_min INT DEFAULT 0,
-                salary_max INT DEFAULT 0,
-                currency CHAR(10),
+                salary_min INT DEFAULT NULL,
+                salary_max INT DEFAULT NULL,
+                currency CHAR(5),
                 vacancy_url TEXT,
                 experience TEXT,
                 type VARCHAR(100),
-                FOREIGN KEY (employer_id) REFERENCES employees(employer_id)
+                FOREIGN KEY (employer_id) REFERENCES employers(employer_id)
                 )
                 """)
     conn.close()
 
 
-def save_data_to_database(data: list[dict[str, Any]], database_name: str, params: dict) -> None:
-    """Сохранение данных о работодателях в базу данных"""
+def save_emp_to_database(data: list[dict[str, Any]], database_name: str, params: dict) -> None:
+    """Сохранение данных о работодателях в базу данных hh"""
     with psycopg2.connect(dbname=database_name, **params) as conn:
         with conn.cursor() as cur:
             for emp in data:
                 cur.execute("""
-                        INSERT INTO employees (employer_id, company_name, open_vacancies, location, employer_url)
+                        INSERT INTO employers (employer_id, company_name, open_vacancies, location, employer_url)
                         VALUES (%s, %s, %s, %s, %s)
                         RETURNING employer_id
                         """,
                             (emp['id'], emp['name'], emp['open_vacancies'], emp['area']['name'],
                              emp['site_url'])
                             )
-                employer_id = cur.fetchone()[0]  # (1, )
 
     conn.close()
 
 
 def save_vacancy_to_database(data: list[dict[str, Any]], database_name: str, params: dict) -> None:
-    """Сохранение данных о вакансиях в базу данных"""
+    """Сохранение данных о вакансиях в базу данных hh"""
     with psycopg2.connect(dbname=database_name, **params) as conn:
         with conn.cursor() as cur:
             for vac in data:
@@ -125,7 +84,12 @@ def save_vacancy_to_database(data: list[dict[str, Any]], database_name: str, par
                              vac['salary']['currency'], vac['alternate_url'], vac['experience']['name'],
                              vac['type']['name'])
                             )
-                # employer_id = cur.fetchone()[0]  # (1, )
 
     conn.close()
 
+
+def user_interactive(answer_num: int, word=None):
+    if answer_num == 1:
+        return f"|Список компаний и количество открытых вакансий|"
+    elif answer_num == 5:
+        return f'>>>Результаты поиска по слову: "{word}"\n'
