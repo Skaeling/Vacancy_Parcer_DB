@@ -14,33 +14,13 @@ def create_database(database_name: str, params: dict) -> None:
     cur.close()
     conn.close()
 
+
+def create_tables(database_name: str, params: dict, sql_path):
     with psycopg2.connect(dbname=database_name, **params) as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """CREATE TABLE employers (
-                employer_id INT PRIMARY KEY,
-                company_name VARCHAR(100) NOT NULL,
-                open_vacancies INT NOT NULL,
-                location VARCHAR(50),
-                employer_url TEXT
-                )
-                """)
+            with open(sql_path, 'r') as file:
+                cur.execute(file.read())
 
-        with conn.cursor() as cur:
-            cur.execute(
-                """CREATE TABLE vacancies (
-                vacancy_id INT PRIMARY KEY,
-                vacancy_name VARCHAR(100) NOT NULL,
-                employer_id INT NOT NULL,
-                salary_min INT DEFAULT NULL,
-                salary_max INT DEFAULT NULL,
-                currency CHAR(5),
-                vacancy_url TEXT,
-                experience TEXT,
-                type VARCHAR(100),
-                FOREIGN KEY (employer_id) REFERENCES employers(employer_id)
-                )
-                """)
     conn.close()
 
 
