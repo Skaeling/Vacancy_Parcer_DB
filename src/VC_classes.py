@@ -15,11 +15,19 @@ class Vacancy:
         """Возвращает данные из БД в строковом представлении"""
         msg = ""
         if self.count_vac:
-            msg = f'{self.company_name} - Количество открытых вакансий: {self.count_vac}'
+            msg = f'{self.company_name} - Открытых вакансий: {self.count_vac}'
         if self.vacancy_name:
+            if self.salary_min == 0:
+                self.salary_min = ""
+            elif self.salary_max == 0:
+                self.salary_max = ""
+            else:
+                self.salary_max = " до " + str(self.salary_max)
+                self.salary_min = "от " + str(self.salary_min)
+
             msg = f'Компания: {self.company_name}\n' \
                   f'Должность: {self.vacancy_name}\n' \
-                  f'Заработная плата: от {self.salary_min} до {self.salary_max} {self.currency}\n' \
+                  f'Заработная плата: {self.salary_min}{self.salary_max} {self.currency}\n' \
                   f'Ссылка на описание вакансии: {self.vacancy_url}\n\n'
         if self.avg_salary:
             msg = f'В компании "{self.company_name}"\n' \
