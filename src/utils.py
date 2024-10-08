@@ -1,4 +1,3 @@
-from typing import Any
 import psycopg2
 
 
@@ -15,8 +14,19 @@ def create_database(database_name: str, params: dict) -> None:
     conn.close()
 
 
-def user_interactive(answer_num: int, word=None):
-    if answer_num == 1:
-        return f"|Список компаний и количество открытых вакансий|"
-    elif answer_num == 5:
-        return f'>>>Результаты поиска по слову: "{word}"\n'
+def user_interactive(user_answer: str, db_data: list, keyword=None):
+    """Возвращает ответ пользователю по полученному номеру вопроса"""
+    if user_answer == '1':
+        msg = f"|Работодатели и количество открытых вакансий|"
+    elif user_answer == '2':
+        msg = f'|Доступные для просмотра вакансии|'
+    elif user_answer == '3':
+        msg = f'|Средняя зарплата по всем вакансиям и работодателям|'
+    elif user_answer == '4':
+        msg = f'|Перечень вакансий с заработной платой выше среднего|'
+    else:
+        if not db_data:
+            msg = "К сожалению, ничего не найдено"
+        else:
+            msg = f'>>>Результаты поиска по слову: "{keyword}"\n'
+    return print(msg), [print(d) for d in db_data]
