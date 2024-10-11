@@ -1,11 +1,13 @@
+--Создание таблиц employers и vacancies
+
 DROP TABLE IF EXISTS employers, vacancies CASCADE;
 
 CREATE TABLE employers (
     employer_id INT PRIMARY KEY,
     company_name VARCHAR(100) NOT NULL,
-    open_vacancies INT NOT NULL,
     location VARCHAR(50),
-    employer_url TEXT
+    employer_url TEXT,
+    description TEXT
 );
 
 CREATE TABLE vacancies (
