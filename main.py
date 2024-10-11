@@ -39,8 +39,7 @@ def main():
         api_hh = HHRequest(employers_ids)
         employers_data = api_hh.get_employers()
         vacancies_data = []
-        for v in employers_data:
-            vacancies_data.extend(api_hh.get_vacancies(v))
+        [vacancies_data.extend(api_hh.get_vacancies(v)) for v in employers_data]
 
         #  Создание БД для хранения полученной из API информации
         params = config()
